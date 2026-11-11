@@ -1,0 +1,756 @@
+﻿===== ARCHIVO: \app\src\androidTest\java\com\hfad\started_laboratorio\ExampleInstrumentedTest.java =====
+package com.hfad.started_laboratorio;
+
+import android.content.Context;
+
+import androidx.test.platform.app.InstrumentationRegistry;
+import androidx.test.ext.junit.runners.AndroidJUnit4;
+
+import org.junit.Test;
+import org.junit.runner.RunWith;
+
+import static org.junit.Assert.*;
+
+/**
+ * Instrumented test, which will execute on an Android device.
+ *
+ * @see <a href="http://d.android.com/tools/testing">Testing documentation</a>
+ */
+@RunWith(AndroidJUnit4.class)
+public class ExampleInstrumentedTest {
+    @Test
+    public void useAppContext() {
+        // Context of the app under test.
+        Context appContext = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        assertEquals("com.hfad.started_laboratorio", appContext.getPackageName());
+    }
+}
+
+===== ARCHIVO: \app\src\main\java\com\hfad\started_laboratorio\DelayedMessageService.java =====
+package com.hfad.started_laboratorio;
+
+import android.app.IntentService;
+import android.content.Intent;
+import android.util.Log;
+
+/**
+ * Parte 1 de la guÃ­a: started service que espera 10 s y luego muestra
+ * el texto en el logcat y en una notificaciÃ³n.
+ * (IntentService estÃ¡ deprecado desde API 30, pero es lo que pide el laboratorio.)
+ */
+@SuppressWarnings("deprecation")
+public class DelayedMessageService extends IntentService {
+
+    public static final String EXTRA_MESSAGE = "message";
+    public static final int NOTIFICATION_ID = 5453;
+    private static final String TAG = "DelayedMessageService";
+
+    public DelayedMessageService() {
+        super("DelayedMessageService");
+    }
+
+    @Override
+    protected void onHandleIntent(Intent intent) {
+        try {
+            Thread.sleep(10000); // 10 segundos, en un hilo aparte
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return;
+        }
+        String text = intent.getStringExtra(EXTRA_MESSAGE);
+        showText(text);
+    }
+
+    private void showText(final String text) {
+        Log.v(TAG, "The message is: " + text);
+        NotificationHelper.show(this, NOTIFICATION_ID,
+                getString(R.string.question), text);
+    }
+}
+
+
+===== ARCHIVO: \app\src\main\java\com\hfad\started_laboratorio\EducationNotificationService.java =====
+package com.hfad.started_laboratorio;
+
+import android.app.IntentService;
+import android.content.Intent;
+import android.util.Log;
+
+/**
+ * Parte 2 (funcionalidad adicional): notificaciones del contexto educativo.
+ *  - TYPE_GRADE:      el estudiante recibe la calificaciÃ³n de un taller o parcial.
+ *  - TYPE_SUBMISSION: el profesor recibe aviso de que una tarea fue entregada
+ *                     y ya puede calificarla.
+ */
+@SuppressWarnings("deprecation")
+public class EducationNotificationService extends IntentService {
+
+    public static final String EXTRA_TYPE = "type";
+    public static final String EXTRA_ACTIVITY_NAME = "activity_name";
+    public static final String EXTRA_VALUE = "value"; // nota o nombre del estudiante
+
+    public static final String TYPE_GRADE = "GRADE";
+    public static final String TYPE_SUBMISSION = "SUBMISSION";
+
+    private static final String TAG = "EducationNotification";
+
+    public EducationNotificationService() {
+        super("EducationNotificationService");
+    }
+
+    @Override
+    protected void onHandleIntent(Intent intent) {
+        try {
+            Thread.sleep(5000); // simula el proceso (calificar / subir tarea)
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return;
+        }
+
+        String type = intent.getStringExtra(EXTRA_TYPE);
+        String activity = intent.getStringExtra(EXTRA_ACTIVITY_NAME);
+        String value = intent.getStringExtra(EXTRA_VALUE);
+
+        String title;
+        String text;
+        if (TYPE_GRADE.equals(type)) {
+            title = getString(R.string.notif_grade_title);
+            text = getString(R.string.notif_grade_text, activity, value);
+        } else {
+            title = getString(R.string.notif_submission_title);
+            text = getString(R.string.notif_submission_text, value, activity);
+        }
+
+        Log.v(TAG, title + " - " + text);
+        // id distinto por notificaciÃ³n para que no se reemplacen entre sÃ­
+        NotificationHelper.show(this, (int) System.currentTimeMillis(), title, text);
+    }
+}
+
+
+===== ARCHIVO: \app\src\main\java\com\hfad\started_laboratorio\MainActivity.java =====
+package com.hfad.started_laboratorio;
+
+import android.Manifest;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.os.Build;
+import android.os.Bundle;
+import android.view.View;
+import android.widget.EditText;
+import android.widget.Toast;
+
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
+
+public class MainActivity extends AppCompatActivity {
+
+    private EditText etActivityName;
+    private EditText etValue;
+
+    // Android 13+ (API 33) exige pedir permiso para mostrar notificaciones
+    private final ActivityResultLauncher<String> permissionLauncher =
+            registerForActivityResult(new ActivityResultContracts.RequestPermission(),
+                    granted -> {
+                        if (!granted) {
+                            Toast.makeText(this, R.string.permission_denied,
+                                    Toast.LENGTH_LONG).show();
+                        }
+                    });
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+
+        etActivityName = findViewById(R.id.etActivityName);
+        etValue = findViewById(R.id.etValue);
+
+        NotificationHelper.createChannel(this);
+        requestNotificationPermission();
+    }
+
+    private void requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= 33
+                && ContextCompat.checkSelfPermission(this,
+                Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS);
+        }
+    }
+
+    /** BotÃ³n de la guÃ­a: inicia DelayedMessageService con el texto "Timing!". */
+    public void onClick(View view) {
+        Intent intent = new Intent(this, DelayedMessageService.class);
+        intent.putExtra(DelayedMessageService.EXTRA_MESSAGE, getString(R.string.button_response));
+        startService(intent);
+    }
+
+    /** Estudiante: llega la calificaciÃ³n de un taller o parcial. */
+    public void onGradeClick(View view) {
+        startEducationService(EducationNotificationService.TYPE_GRADE);
+    }
+
+    /** Profesor: un estudiante entregÃ³ una tarea y hay que calificarla. */
+    public void onSubmissionClick(View view) {
+        startEducationService(EducationNotificationService.TYPE_SUBMISSION);
+    }
+
+    private void startEducationService(String type) {
+        String activityName = etActivityName.getText().toString().trim();
+        String value = etValue.getText().toString().trim();
+        if (activityName.isEmpty() || value.isEmpty()) {
+            Toast.makeText(this, R.string.fill_fields, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Intent intent = new Intent(this, EducationNotificationService.class);
+        intent.putExtra(EducationNotificationService.EXTRA_TYPE, type);
+        intent.putExtra(EducationNotificationService.EXTRA_ACTIVITY_NAME, activityName);
+        intent.putExtra(EducationNotificationService.EXTRA_VALUE, value);
+        startService(intent);
+        Toast.makeText(this, R.string.notification_scheduled, Toast.LENGTH_SHORT).show();
+    }
+}
+
+
+===== ARCHIVO: \app\src\main\java\com\hfad\started_laboratorio\NotificationHelper.java =====
+package com.hfad.started_laboratorio;
+
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.Context;
+import android.content.Intent;
+import android.os.Build;
+
+import androidx.core.app.NotificationCompat;
+
+/** Centraliza la creaciÃ³n del canal y la emisiÃ³n de notificaciones. */
+public final class NotificationHelper {
+
+    public static final String CHANNEL_ID = "joke_channel";
+
+    private NotificationHelper() {}
+
+    /** Desde Android 8 (API 26) toda notificaciÃ³n necesita un canal. */
+    public static void createChannel(Context context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                    CHANNEL_ID,
+                    context.getString(R.string.channel_name),
+                    NotificationManager.IMPORTANCE_HIGH);
+            NotificationManager nm = context.getSystemService(NotificationManager.class);
+            nm.createNotificationChannel(channel);
+        }
+    }
+
+    public static void show(Context context, int notificationId, String title, String text) {
+        createChannel(context);
+
+        // PendingIntent: al tocar la notificaciÃ³n se abre MainActivity
+        Intent actionIntent = new Intent(context, MainActivity.class);
+        PendingIntent pendingIntent = PendingIntent.getActivity(
+                context, 0, actionIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+        NotificationCompat.Builder builder =
+                new NotificationCompat.Builder(context, CHANNEL_ID)
+                        .setSmallIcon(android.R.drawable.ic_dialog_info)
+                        .setContentTitle(title)
+                        .setContentText(text)
+                        .setStyle(new NotificationCompat.BigTextStyle().bigText(text))
+                        .setPriority(NotificationCompat.PRIORITY_HIGH)
+                        .setVibrate(new long[]{0, 1000})
+                        .setAutoCancel(true)
+                        .setContentIntent(pendingIntent);
+
+        NotificationManager nm =
+                (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        nm.notify(notificationId, builder.build());
+    }
+}
+
+
+===== ARCHIVO: \app\src\main\res\drawable\ic_launcher_background.xml =====
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#3DDC84"
+        android:pathData="M0,0h108v108h-108z" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M9,0L9,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M19,0L19,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M29,0L29,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M39,0L39,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M49,0L49,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M59,0L59,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M69,0L69,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M79,0L79,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M89,0L89,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M99,0L99,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,9L108,9"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,19L108,19"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,29L108,29"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,39L108,39"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,49L108,49"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,59L108,59"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,69L108,69"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,79L108,79"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,89L108,89"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,99L108,99"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M19,29L89,29"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M19,39L89,39"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M19,49L89,49"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M19,59L89,59"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M19,69L89,69"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M19,79L89,79"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M29,19L29,89"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M39,19L39,89"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M49,19L49,89"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M59,19L59,89"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M69,19L69,89"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M79,19L79,89"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+</vector>
+
+
+===== ARCHIVO: \app\src\main\res\drawable\ic_launcher_foreground.xml =====
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:pathData="M31,63.928c0,0 6.4,-11 12.1,-13.1c7.2,-2.6 26,-1.4 26,-1.4l38.1,38.1L107,108.928l-32,-1L31,63.928z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:endX="85.84757"
+                android:endY="92.4963"
+                android:startX="42.9492"
+                android:startY="49.59793"
+                android:type="linear">
+                <item
+                    android:color="#44000000"
+                    android:offset="0.0" />
+                <item
+                    android:color="#00000000"
+                    android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillType="nonZero"
+        android:pathData="M65.3,45.828l3.8,-6.6c0.2,-0.4 0.1,-0.9 -0.3,-1.1c-0.4,-0.2 -0.9,-0.1 -1.1,0.3l-3.9,6.7c-6.3,-2.8 -13.4,-2.8 -19.7,0l-3.9,-6.7c-0.2,-0.4 -0.7,-0.5 -1.1,-0.3C38.8,38.328 38.7,38.828 38.9,39.228l3.8,6.6C36.2,49.428 31.7,56.028 31,63.928h46C76.3,56.028 71.8,49.428 65.3,45.828zM43.4,57.328c-0.8,0 -1.5,-0.5 -1.8,-1.2c-0.3,-0.7 -0.1,-1.5 0.4,-2.1c0.5,-0.5 1.4,-0.7 2.1,-0.4c0.7,0.3 1.2,1 1.2,1.8C45.3,56.528 44.5,57.328 43.4,57.328L43.4,57.328zM64.6,57.328c-0.8,0 -1.5,-0.5 -1.8,-1.2s-0.1,-1.5 0.4,-2.1c0.5,-0.5 1.4,-0.7 2.1,-0.4c0.7,0.3 1.2,1 1.2,1.8C66.5,56.528 65.6,57.328 64.6,57.328L64.6,57.328z"
+        android:strokeWidth="1"
+        android:strokeColor="#00000000" />
+</vector>
+
+===== ARCHIVO: \app\src\main\res\layout\activity_main.xml =====
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <Button
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:onClick="onClick"
+        android:text="@string/send_message" />
+
+    <EditText
+        android:id="@+id/etActivityName"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:hint="@string/hint_activity"
+        android:inputType="text" />
+
+    <EditText
+        android:id="@+id/etValue"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/hint_value"
+        android:inputType="text" />
+
+    <Button
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:onClick="onGradeClick"
+        android:text="@string/btn_grade" />
+
+    <Button
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:onClick="onSubmissionClick"
+        android:text="@string/btn_submission" />
+</LinearLayout>
+
+
+===== ARCHIVO: \app\src\main\res\mipmap-anydpi-v26\ic_launcher.xml =====
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>
+
+===== ARCHIVO: \app\src\main\res\mipmap-anydpi-v26\ic_launcher_round.xml =====
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>
+
+===== ARCHIVO: \app\src\main\res\values\colors.xml =====
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+</resources>
+
+===== ARCHIVO: \app\src\main\res\values\strings.xml =====
+<resources>
+    <string name="app_name">Joke</string>
+    <string name="channel_name">Notificaciones de Joke</string>
+    <string name="question">Joke</string>
+    <string name="button_response">Timing!</string>
+    <string name="send_message">Enviar mensaje (10 s)</string>
+
+    <string name="hint_activity">Nombre del taller / parcial / tarea</string>
+    <string name="hint_value">Nota (estudiante) o nombre del estudiante (profesor)</string>
+    <string name="btn_grade">Estudiante: notificar calificaciÃ³n</string>
+    <string name="btn_submission">Profesor: notificar entrega de tarea</string>
+
+    <string name="notif_grade_title">Nueva calificaciÃ³n</string>
+    <string name="notif_grade_text">Tu %1$s fue calificado: %2$s</string>
+    <string name="notif_submission_title">Tarea entregada</string>
+    <string name="notif_submission_text">%1$s entregÃ³ \"%2$s\". Ya puedes calificarla.</string>
+
+    <string name="fill_fields">Completa los dos campos</string>
+    <string name="notification_scheduled">La notificaciÃ³n llegarÃ¡ en 5 segundos</string>
+    <string name="permission_denied">Sin permiso de notificaciones no verÃ¡s los avisos</string>
+</resources>
+
+
+===== ARCHIVO: \app\src\main\res\values\themes.xml =====
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme. -->
+    <style name="Base.Theme.Started_laboratorio" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Customize your light theme here. -->
+        <!-- <item name="colorPrimary">@color/my_light_primary</item> -->
+    </style>
+
+    <style name="Theme.Started_laboratorio" parent="Base.Theme.Started_laboratorio" />
+</resources>
+
+===== ARCHIVO: \app\src\main\res\values-night\themes.xml =====
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme. -->
+    <style name="Base.Theme.Started_laboratorio" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Customize your dark theme here. -->
+        <!-- <item name="colorPrimary">@color/my_dark_primary</item> -->
+    </style>
+</resources>
+
+===== ARCHIVO: \app\src\main\res\xml\backup_rules.xml =====
+<?xml version="1.0" encoding="utf-8"?><!--
+   Sample backup rules file; uncomment and customize as necessary.
+   See https://developer.android.com/guide/topics/data/autobackup
+   for details.
+   Note: This file is ignored for devices older than API 31
+   See https://developer.android.com/about/versions/12/backup-restore
+-->
+<full-backup-content>
+    <!--
+   <include domain="sharedpref" path="."/>
+   <exclude domain="sharedpref" path="device.xml"/>
+-->
+</full-backup-content>
+
+===== ARCHIVO: \app\src\main\res\xml\data_extraction_rules.xml =====
+<?xml version="1.0" encoding="utf-8"?><!--
+   Sample data extraction rules file; uncomment and customize as necessary.
+   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
+   for details.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <!-- TODO: Use <include> and <exclude> to control what is backed up.
+        <include .../>
+        <exclude .../>
+        -->
+    </cloud-backup>
+    <!--
+    <device-transfer>
+        <include .../>
+        <exclude .../>
+    </device-transfer>
+    -->
+</data-extraction-rules>
+
+===== ARCHIVO: \app\src\main\AndroidManifest.xml =====
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+
+
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Started_laboratorio">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service android:name=".DelayedMessageService" android:exported="false" />
+        <service android:name=".EducationNotificationService" android:exported="false" />
+    </application>
+
+</manifest>
+
+===== ARCHIVO: \app\src\test\java\com\hfad\started_laboratorio\ExampleUnitTest.java =====
+package com.hfad.started_laboratorio;
+
+import org.junit.Test;
+
+import static org.junit.Assert.*;
+
+/**
+ * Example local unit test, which will execute on the development machine (host).
+ *
+ * @see <a href="http://d.android.com/tools/testing">Testing documentation</a>
+ */
+public class ExampleUnitTest {
+    @Test
+    public void addition_isCorrect() {
+        assertEquals(4, 2 + 2);
+    }
+}
+
+===== ARCHIVO: \app\build.gradle.kts =====
+plugins {
+    alias(libs.plugins.android.application)
+}
+
+android {
+    namespace = "com.hfad.started_laboratorio"
+    compileSdk {
+        version = release(37)
+    }
+
+    defaultConfig {
+        applicationId = "com.hfad.started_laboratorio"
+        minSdk = 24
+        targetSdk = 37
+        versionCode = 1
+        versionName = "1.0"
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        release {
+            optimization {
+                enable = false
+            }
+        }
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
+}
+
+dependencies {
+    implementation(libs.activity.ktx)
+    implementation(libs.appcompat)
+    implementation(libs.constraintlayout)
+    implementation(libs.material)
+    testImplementation(libs.junit)
+    androidTestImplementation(libs.espresso.core)
+    androidTestImplementation(libs.ext.junit)
+}
+
+===== ARCHIVO: \build.gradle.kts =====
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
+plugins {
+    alias(libs.plugins.android.application) apply false
+}
+
+===== ARCHIVO: \settings.gradle.kts =====
+pluginManagement {
+    repositories {
+        google {
+            content {
+                includeGroupByRegex("com\\.android.*")
+                includeGroupByRegex("com\\.google.*")
+                includeGroupByRegex("androidx.*")
+            }
+        }
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+plugins {
+    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "started_laboratorio"
+include(":app")
